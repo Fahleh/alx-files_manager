@@ -5,10 +5,10 @@ import redisClient from '../utils/redis';
 export default class AuthController {
   static async getConnect(req, res) {
     const { user } = req;
-    const ID = uuidv4();
+    const token = uuidv4();
 
-    await redisClient.set(`auth_${ID}`, user._id.toString(), 24 * 60 * 60);
-    res.status(200).json({ token: ID });
+    await redisClient.set(`auth_${token}`, user._id.toString(), 24 * 60 * 60);
+    res.status(200).json({ token });
   }
 
   static async getDisconnect(req, res) {

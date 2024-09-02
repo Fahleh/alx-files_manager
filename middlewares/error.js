@@ -19,7 +19,7 @@ export class APIError extends Error {
  * @param {Response} res The Express response object.
  * @param {NextFunction} next The Express next function.
  */
-export const errorResponse = (err, req, res) => {
+export const errorResponse = (err, req, res, next) => {
   const defaultMsg = `Failed to process ${req.url}`;
 
   if (err instanceof APIError) {

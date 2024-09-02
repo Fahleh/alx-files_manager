@@ -5,143 +5,147 @@ import { promisify } from 'util';
 import mimeMessage from 'mime-message';
 import { gmail_v1 as gmailV1, google } from 'googleapis';
 
+// If modifying these scopes, delete token.json.
 const SCOPES = ['https://www.googleapis.com/auth/gmail.send'];
-/* The file `token.json` stores the user's access & refresh tokens, and is
-   created automatically when the authorization flow completes for the first
-   time. Delete `token.json` when modifying this scope. */
-const TOKEN_STORE = 'token.json';
-const readFile = promisify(fs.readFile);
-const writeFile = promisify(fs.writeFile);
+// The file token.json stores the user's access and refresh tokens, and is
+// created automatically when the authorization flow completes for the first
+// time.
+const TOKEN_PATH = 'token.json';
+const readFileAsync = promisify(fs.readFile);
+const writeFileAsync = promisify(fs.writeFile);
 
 /**
- * Stores the new user token and executes the given function.
- * @param {google.auth.OAuth2} oAuth2 The OAuth2 client to get token for.
- * @param {getEventsCallback} noNameFn The callback for the authorized client.
+ * Get and store new token after prompting for user authorization, and then
+ * execute the given callback with the authorized OAuth2 client.
+ * @param {google.auth.OAuth2} oAuth2Client The OAuth2 client to get token for.
+ * @param {getEventsCallback} callback The callback for the authorized client.
  */
-async function getToken(oAuth2, noNameFn) {
-  const URL = oAuth2.generateAuthUrl({
+async function getNewToken(oAuth2Client, callback) {
+  const authUrl = oAuth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: SCOPES,
   });
-  console.log('For authorization visit:', URL);
-  const readLine = readline.createInterface({
+  console.log('Authorize this app by visiting this url:', authUrl);
+  const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
-  readLine.question('Enter the authorization code: ', (code) => {
-    readLine.close();
-    oAuth2.getToken(code, (err, token) => {
+  rl.question('Enter the code from that page here: ', (code) => {
+    rl.close();
+    oAuth2Client.getToken(code, (err, token) => {
       if (err) {
-        console.error('Failed to retrieve access token', err);
+        console.error('Error retrieving access token', err);
         return;
       }
-      oAuth2.setCredentials(token);
-      writeFile(TOKEN_STORE, JSON.stringify(token))
+      oAuth2Client.setCredentials(token);
+      writeFileAsync(TOKEN_PATH, JSON.stringify(token))
         .then(() => {
-          console.log('Token saved in', TOKEN_STORE);
-          noNameFn(oAuth2);
+          console.log('Token stored to', TOKEN_PATH);
+          callback(oAuth2Client);
         })
-        .catch((writeError) => console.error(writeError));
+        .catch((writeErr) => console.error(writeErr));
     });
   });
 }
 
 /**
- * Create an OAuth2 client with the user data, then execute the
- * given function.
- * @param {Object} userData The authorization client credentials.
- * @param {function} noNameFn The callback to call with the authorized client.
+ * Create an OAuth2 client with the given credentials, and then execute the
+ * given callback function.
+ * @param {Object} credentials The authorization client credentials.
+ * @param {function} callback The callback to call with the authorized client.
  */
-async function handleAuth(userData, noNameFn) {
-  const cSecret = userData.web.client_secret;
-  const cId = userData.web.client_id;
-  const redirects = userData.web.redirect_uris;
-  const oAuth2 = new google.auth.OAuth2(
-    cId,
-    cSecret,
-    redirects[0],
+async function authorize(credentials, callback) {
+  const clientSecret = credentials.web.client_secret;
+  const clientId = credentials.web.client_id;
+  const redirectURIs = credentials.web.redirect_uris;
+  const oAuth2Client = new google.auth.OAuth2(
+    clientId,
+    clientSecret,
+    redirectURIs[0],
   );
-  console.log('Starting Client authorization...');
-
-  await readFile(TOKEN_STORE)
+  console.log('Client authorization beginning');
+  // Check if we have previously stored a token.
+  await readFileAsync(TOKEN_PATH)
     .then((token) => {
-      oAuth2.setCredentials(JSON.parse(token));
-      noNameFn(oAuth2);
-    }).catch(async () => getToken(oAuth2, noNameFn));
-  console.log('Authorization completed.');
+      oAuth2Client.setCredentials(JSON.parse(token));
+      callback(oAuth2Client);
+    }).catch(async () => getNewToken(oAuth2Client, callback));
+  console.log('Client authorization done');
 }
 
 /**
- * Sends an email to the user's account.
- * @param {google.auth.OAuth2} oAuth An authorized OAuth2 client.
- * @param {gmailV1.Schema$Message} message The message to send.
+ * Delivers a mail through the user's account.
+ * @param {google.auth.OAuth2} auth An authorized OAuth2 client.
+ * @param {gmailV1.Schema$Message} mail The message to send.
  */
-function mailSender(oAuth, message) {
-  const gmail = google.gmail({ version: 'v1', oAuth });
+function sendMailService(auth, mail) {
+  const gmail = google.gmail({ version: 'v1', auth });
 
   gmail.users.messages.send({
     userId: 'me',
-    requestBody: message,
-  }, (error, _res) => {
-    if (error) {
-      console.log(`Error: ${error.message || error.toString()}`);
+    requestBody: mail,
+  }, (err, _res) => {
+    if (err) {
+      console.log(`The API returned an error: ${err.message || err.toString()}`);
       return;
     }
     console.log('Message sent successfully');
   });
 }
 
-// Handles mail delivery routines.
+/**
+ * Contains routines for mail delivery with GMail.
+ */
 export default class Mailer {
-  static verifyAuth() {
-    readFile('credentials.json')
+  static checkAuth() {
+    readFileAsync('credentials.json')
       .then(async (content) => {
-        await handleAuth(JSON.parse(content), (auth) => {
+        await authorize(JSON.parse(content), (auth) => {
           if (auth) {
-            console.log('Passed authentication check.');
+            console.log('Auth check was successful');
           }
         });
       })
-      .catch((error) => {
-        console.log('Error: Failed to load secret file:', error);
+      .catch((err) => {
+        console.log('Error loading client secret file:', err);
       });
   }
 
-  static buildMessage(destination, subject, body) {
-    const sender = process.env.GMAIL_SENDER;
-    const messagConfig = {
+  static buildMessage(dest, subject, message) {
+    const senderEmail = process.env.GMAIL_SENDER;
+    const msgData = {
       type: 'text/html',
       encoding: 'UTF-8',
-      from: sender,
-      to: [destination],
+      from: senderEmail,
+      to: [dest],
       cc: [],
       bcc: [],
       replyTo: [],
       date: new Date(),
       subject,
-      body,
+      body: message,
     };
 
-    if (!sender) {
-      throw new Error(`Invalid sender: ${sender}`);
+    if (!senderEmail) {
+      throw new Error(`Invalid sender: ${senderEmail}`);
     }
-    if (!mimeMessage.validMimeMessage(messagConfig)) {
-      throw new Error('Invalid MIME message');
+    if (mimeMessage.validMimeMessage(msgData)) {
+      const mimeMsg = mimeMessage.createMimeMessage(msgData);
+      return { raw: mimeMsg.toBase64SafeString() };
     }
-    const mimeMsg = mimeMessage.createMimeMessage(messagConfig);
-    return { raw: mimeMsg.toBase64SafeString() };
+    throw new Error('Invalid MIME message');
   }
 
-  static sendMail(msg) {
-    readFile('credentials.json')
-      .then(async (data) => {
-        await handleAuth(
-          JSON.parse(data),
-          (auth) => mailSender(auth, msg),
+  static sendMail(mail) {
+    readFileAsync('credentials.json')
+      .then(async (content) => {
+        await authorize(
+          JSON.parse(content),
+          (auth) => sendMailService(auth, mail),
         );
       })
-      .catch((error) => {
-        console.log('Error: Failed to load secret file:', error);
+      .catch((err) => {
+        console.log('Error loading client secret file:', err);
       });
   }
 }
