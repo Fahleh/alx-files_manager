@@ -1,10 +1,11 @@
 import express from 'express';
 import startServer from './libs/boot';
 import injectRoutes from './routes';
+import injectMiddlewares from './libs/middlewares';
 
 const server = express();
 
-server.use(express.json({ limit: '200mb' }));
+injectMiddlewares(server);
 injectRoutes(server);
 startServer(server);
 
