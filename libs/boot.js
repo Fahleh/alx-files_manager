@@ -1,7 +1,7 @@
-import envLoader from '../utils/loadEnv';
+import loadEnv from '../utils/loadEnv';
 
 const startServer = (api) => {
-  envLoader();
+  loadEnv();
   const port = process.env.PORT || 5000;
   const env = process.env.npm_lifecycle_event || 'dev';
   api.listen(port, () => {
