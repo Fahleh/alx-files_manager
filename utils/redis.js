@@ -16,9 +16,7 @@ class RedisClient {
         err.message || err.toString()
       );
     });
-    this.client.on('connect', () => {
-      console.log('Redis Client connected successfully.');
-    });
+    this.client.on('connect', () => {});
   }
 
   /**
