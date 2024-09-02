@@ -10,13 +10,12 @@ class RedisClient {
    */
   constructor() {
     this.client = createClient();
-    this.isClientConnected = true;
-    this.client.on('error', (err) => {
-      console.error('Redis client failed to connect:', err.message || err.toString());
-      this.isClientConnected = false;
-    });
+    this.isConnected = false;
     this.client.on('connect', () => {
-      this.isClientConnected = true;
+      this.isConnected = true;
+    }).on('error', (err) => {
+      console.error('Redis client failed to connect:', err.message || err.toString());
+      this.isConnected = false;
     });
   }
 
@@ -25,7 +24,7 @@ class RedisClient {
    * @returns {boolean}
    */
   isAlive() {
-    return this.isClientConnected;
+    return this.isConnected;
   }
 
   /**
