@@ -1,5 +1,5 @@
 import express from 'express';
-import startServer from './libs/boot';
+import startServer from './services/boot';
 import injectRoutes from './routes';
 
 const server = express();
