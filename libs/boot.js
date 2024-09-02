@@ -1,4 +1,4 @@
-import envLoader from '../utils/env_loader';
+import envLoader from '../utils/loadEnv';
 
 const startServer = (api) => {
   envLoader();
